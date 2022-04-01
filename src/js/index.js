@@ -15,7 +15,7 @@
 //[ ] 중복되는 메뉴는 추가할 수 없다. 
 
 import { $ } from './utils/dom.js';
-import store from "./store/index.js"
+import store from "./store/index.js";
 
   //local storage에 저장된 데이터 => '상태' 이 상태를 fuction App이라는 function에서 상태[변할수 있는 데이터, 이 앱에서 변하는 것이 무엇인가]를 가지고 있는게 뭘까? => 메뉴명, 개수(그런데, 개수는 메뉴명(array)의 길이로부터 추론할 수 있으므로 상태로 관리할 필요 없다.) 
 
@@ -28,25 +28,38 @@ const menuApi = {
   async getAllMenuByCategory(category){
     const response = await fetch (`${BASE_URL}/api/category/${category}/menu`);
     return response.json();
-    console.log(`getAllMenuByCategory함수에서 반환하는 값은 ${response.json()} 임.`); // Why unreachable?
+   
   }
   ,async createMenu(category, name){
     const response = await fetch(`${BASE_URL}/api/category/${category}/menu`, {
+      // category parameter는 uri 찾아가는데 사용됨. 
       method: "POST",  // 개체가 새로 생성될 경우 하는 약속
       headers: {
         "Content-Type" : "application/json",
       },
-      body: JSON.stringify({name}),
+      body: JSON.stringify({"name" : name}),
+      // stringify한 name을 넣어주기. 그런데 왜 중괄호? 
     });
+    console.log(response);
     if (!response.ok) {
       console.log("Error");
     };
   }
+  ,async updateMenu(category, name, id){
+      const response =  await fetch(`${BASE_URL}/api/category/${category}/menu/${id}`, {
+        method : "PUT", 
+        headers : {
+          "Content-Type" : "application/json",
+        },
+        body: JSON.stringify({name}),
+      });
+
+  }
 }
+
 
 function App() {
 
-  //함수가 실행될 떄마다 변화하는 상태들.
   this.menu = {
     espresso: [],
     frappuccino: [],
@@ -54,10 +67,10 @@ function App() {
     teavana: [],
     desert: [],
   };
-  // => 새로 생성되는 객체 instance의 menu property를 이러한 형태의 객체로 생성 했다. 
+  // => 새로 생성되는 객체 instance의 menu의 value를 위와 같은 형태로 생성함. 
 
   this.currentCategory = "espresso"; 
-  // => 디폴트 값은 espresso로.
+  // => 생성되는 객체의 currentCategory 디폴트 값은 espresso로.
 
   //initial rendering 
   this.init = async () => {
@@ -66,12 +79,11 @@ function App() {
     initEventListners();
   }
   // => init이라는 async 함수를 정의하는데, 이 함수의 메뉴에서 currentCategory 즉 "espresso"의 value에 해당하는 것(리스트)에다가 
-  // => 메뉴에이피아아이 객체의 getAllMenuByCategory라는 메소드를 사용해라. 메소드의 입력값은 this.currentcategory(즉 "espresso")
+  // => menuApi 객체의 getAllMenuByCategory라는 메소드를 사용해라. 메소드의 입력값은 this.currentcategory(즉 "espresso")
   // => 렌더함수 실행해주고, initEventListners 실행해줘라. 
 
   const render = () => {
     const template = this.menu[this.currentCategory].map((menuItem, index) => {
-      //상태값에 다라 true면 soldout을 추가하고 $m아니면 아닌 방법 잘 살펴볼 것. 
       return`
       <li data-menu-id= "${index}" class=" menu-list-item d-flex items-center py-2">
         <span class=" ${menuItem.soldOut ? "sold-out": ""} w-100 pl-2 menu-name">${menuItem.name}</span>
@@ -95,21 +107,21 @@ function App() {
         </button>
       </li>`
     }).join("")
-    //join method => 
+    //join method => 원래는 어레이 형태로 받아졌을 텐데, 그것을 string으로 합침.  
     $("#menu-list").innerHTML = template;
     updateMenuCount();
   }
 
-  //입력 값 받아서 list 형성
+  //Create 부분.
   const addMenuName = async (e) => {
-
+  //input 값이 없으면, "값을 넣어 주세요" 출력함.
     if ($("#menu-name").value === ""){
         alert("Please enter a value.");
         return;
     }
-
+    //menuName이라는 변수에다가 input 값을 담아라.
     const menuName = $("#menu-name").value;
-    
+    //menuApi의 createMenu method 실행. 입력값은, 현 카테고리와 입력값. 
     await menuApi.createMenu(this.currentCategory, menuName);
 
     this.menu[this.currentCategory] = await menuApi.getAllMenuByCategory(this.currentCategory);
@@ -127,13 +139,22 @@ function App() {
   }
 
   //메뉴 수정
-  const updateMenuName = (e) => {
+  const updateMenuName = async (e) => {
     let i = findOutI(e);
     const $menuName = e.target.closest("li").querySelector(".menu-name");
+    const $menuId = e.target.closest("li").dataset.menuId;
+    console.log($menuId);
+    // event object 의 타겟속성에 closest method 적용. 거기에 다시 querySelector method 적용.=> 이벤트가 발생한 object에서 가장 가까운 li에서 menu-name이라는 클래스를 찾아라. (.은 class #은 id))
     const updatedMenuName = prompt("Change the menu", $menuName.innerText);
     this.menu[this.currentCategory][i].name = updatedMenuName;
-    store.setLocalStorage(this.menu);
-    console.log(`${i}에 있는 메뉴이름을 ${updatedMenuName}으로 수정합니다.`);
+    await menuApi.updateMenu(this.currentCategory, updatedMenuName, $menuId);
+   
+  //  store.setLocalStorage(this.menu);// 이제 이거를 서버에 수정하는 걸로 바꾸어야 함.
+
+
+
+    
+    console.log(`${i}에 있는 메뉴 이름을 ${updatedMenuName}으로 수정합니다.`);
     render();
   }
 
