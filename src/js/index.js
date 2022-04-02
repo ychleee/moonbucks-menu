@@ -15,7 +15,6 @@
 //[ ] 중복되는 메뉴는 추가할 수 없다. 
 
 import { $ } from './utils/dom.js';
-import store from "./store/index.js";
 
   //local storage에 저장된 데이터 => '상태' 이 상태를 fuction App이라는 function에서 상태[변할수 있는 데이터, 이 앱에서 변하는 것이 무엇인가]를 가지고 있는게 뭘까? => 메뉴명, 개수(그런데, 개수는 메뉴명(array)의 길이로부터 추론할 수 있으므로 상태로 관리할 필요 없다.) 
 
@@ -28,7 +27,6 @@ const menuApi = {
   async getAllMenuByCategory(category){
     const response = await fetch (`${BASE_URL}/api/category/${category}/menu`);
     return response.json();
-   
   }
   ,async createMenu(category, name){
     const response = await fetch(`${BASE_URL}/api/category/${category}/menu`, {
@@ -37,24 +35,42 @@ const menuApi = {
       headers: {
         "Content-Type" : "application/json",
       },
-      body: JSON.stringify({"name" : name}),
-      // stringify한 name을 넣어주기. 그런데 왜 중괄호? 
+      body: JSON.stringify({name}),
+      // stringify한 name을 넣어주기. 그런데 왜 중괄호? => javaScript에서 {} 에 스트링 "text"들어있는 변수 a 넣어주면 {"a": "text" }이렇게 저장됨  
     });
     console.log(response);
     if (!response.ok) {
       console.log("Error");
     };
   }
-  ,async updateMenu(category, name, id){
+  ,async updateMenu(category, name, id, isSoldOut){
+      console.log(JSON.stringify({name, isSoldOut}));
       const response =  await fetch(`${BASE_URL}/api/category/${category}/menu/${id}`, {
         method : "PUT", 
         headers : {
           "Content-Type" : "application/json",
         },
-        body: JSON.stringify({name}),
+        body: JSON.stringify({name, isSoldOut}),
+        //왜 여기에서 name은 서버에 제대로 put 되는데, isSoldOut은 안되는가?
       });
-
   }
+  ,async removeMenu(category, id){
+      const response = await fetch(`${BASE_URL}/api/category/${category}/menu/${id}`, {
+        method : "DELETE", 
+        headers : {
+          "Content-Type" : "application/json",
+        },
+      });
+  }
+  // ,async soldOutMenu(category, id, isSoldOut){
+  //     const response = await fetch(`${BASE_URL}/api/category/${category}/menu/${id}`, {
+  //       method : "PUT", 
+  //       headers : {
+  //         "Content-Type" : "application/json",
+  //       },
+  //       body: JSON.stringify({isSoldOut}),
+  //     });
+  // }
 }
 
 
@@ -75,6 +91,7 @@ function App() {
   //initial rendering 
   this.init = async () => {
     this.menu[this.currentCategory] = await menuApi.getAllMenuByCategory(this.currentCategory);
+    console.log(this.menu[this.currentCategory]);
     render();
     initEventListners();
   }
@@ -83,10 +100,12 @@ function App() {
   // => 렌더함수 실행해주고, initEventListners 실행해줘라. 
 
   const render = () => {
-    const template = this.menu[this.currentCategory].map((menuItem, index) => {
-      return`
-      <li data-menu-id= "${index}" class=" menu-list-item d-flex items-center py-2">
-        <span class=" ${menuItem.soldOut ? "sold-out": ""} w-100 pl-2 menu-name">${menuItem.name}</span>
+    console.log(`${this.currentCategory} 에 있는 아이템들을 렌더합니다.`);
+    console.log(this.menu);
+    const template = this.menu[this.currentCategory].map(menuItem => {
+      return `
+      <li data-menu-id= "${menuItem.id}" class=" menu-list-item d-flex items-center py-2">
+        <span class= "${menuItem.isSoldOut ? "sold-out" : ""} w-100 pl-2 menu-name">${menuItem.name}</span>
         <button
         type="button"
         class="bg-gray-50 text-gray-500 text-sm mr-1 menu-sold-out-button"
@@ -105,7 +124,7 @@ function App() {
         >
           삭제
         </button>
-      </li>`
+      </li>`;
     }).join("")
     //join method => 원래는 어레이 형태로 받아졌을 텐데, 그것을 string으로 합침.  
     $("#menu-list").innerHTML = template;
@@ -128,8 +147,6 @@ function App() {
     render();
     $("#menu-name").value = "";
 
-      //join method => 배열로 저장되어 있는 것들을 하나로 뭉쳐줌. 
-
   };
 
   //메뉴 수 카운트
@@ -143,46 +160,49 @@ function App() {
     let i = findOutI(e);
     const $menuName = e.target.closest("li").querySelector(".menu-name");
     const $menuId = e.target.closest("li").dataset.menuId;
-    console.log($menuId);
     // event object 의 타겟속성에 closest method 적용. 거기에 다시 querySelector method 적용.=> 이벤트가 발생한 object에서 가장 가까운 li에서 menu-name이라는 클래스를 찾아라. (.은 class #은 id))
     const updatedMenuName = prompt("Change the menu", $menuName.innerText);
     this.menu[this.currentCategory][i].name = updatedMenuName;
-    await menuApi.updateMenu(this.currentCategory, updatedMenuName, $menuId);
-   
-  //  store.setLocalStorage(this.menu);// 이제 이거를 서버에 수정하는 걸로 바꾸어야 함.
+    let soldOut = this.menu[this.currentCategory][i].isSoldOut;
+    await menuApi.updateMenu(this.currentCategory, updatedMenuName, $menuId, soldOut);
+    console.log(`${this.currentCategory}의 ${i}에 있는 메뉴 이름을 ${updatedMenuName}으로 수정합니다. 품절 상태는 ${soldOut}입니다.`);
+    render();
+  }
 
-
-
+  //품절 관리
+  const soldOutMenu = async (e) => {
+    const i = findOutI(e);
+    const $menuId = e.target.closest("li").dataset.menuId;
+    this.menu[this.currentCategory][i].isSoldOut = !this.menu[this.currentCategory][i].isSoldOut;
+    //toggle => 처음에는 undefined여서 반대면 true, 그 다음에는 true 이므로 false로 전환
     
-    console.log(`${i}에 있는 메뉴 이름을 ${updatedMenuName}으로 수정합니다.`);
+    //서버에 있는 item들의 내용 바꿔주기. 
+    const menuName = this.menu[this.currentCategory][i].name;
+    const soldOut = this.menu[this.currentCategory][i].isSoldOut;
+      // 현 인스턴스에는 제대로 저장되어 있는데, 서버에 왜 반영이 안될까? 
+    await menuApi.updateMenu(this.currentCategory, menuName, $menuId, soldOut);
+    console.log(`${i}에 있는 메뉴 품절상태를 ${soldOut}로 수정합니다.`);
     render();
   }
 
   //메뉴 삭제 
-  const removeMenuName = (e) => {
+  const removeMenuName = async (e) => {
     if (confirm("Do you really want to delete the menu?") == true) {
       //problem => 메뉴 아이디로 트랙하면 안됨. 그것보다는 이벤트가 발생한 List가 전체 UL에서 몇번째인지가 나와야 함 => indexof method?
       //현재 '삭제' 클릭한 리스트 확보
       let i = findOutI(e);
       console.log(`${i}에 있는 메뉴를 삭제합니다.`);
-
+      const $menuId = e.target.closest("li").dataset.menuId;
       this.menu[this.currentCategory].splice(i, 1);
+      await menuApi.removeMenu(this.currentCategory, $menuId);
+      
       render();
-      store.setLocalStorage(this.menu[this.currentCategory]);
 
     } else {
       return;
     }
   };
 
-  //품절 관리
-  const soldOutMenu = (e) => {
-    const i = findOutI(e);
-    this.menu[this.currentCategory][i].soldOut = !this.menu[this.currentCategory][i].soldOut;
-    //toggle => 처음에는 undefined여서 반대면 true, 그 다음에는 true 이므로 false로 전환
-    store.setLocalStorage(this.menu);
-    render();
-  }
 
   //ul안에서 li의 순서 찾기
   const findOutI = (e) => {
@@ -194,6 +214,20 @@ function App() {
     };
     return i;
   } 
+
+  // 네비게이션할 때 렌더하기
+  const navRender = async (e) => {
+    const isCategoryButton =
+    e.target.classList.contains("cafe-category-name");
+    if (isCategoryButton) {
+    this.currentCategory = e.target.dataset.categoryName;
+    $("#category-title").innerText = `${e.target.innerText} 메뉴 관리`;
+    this.menu[this.currentCategory] = await menuApi.getAllMenuByCategory(this.currentCategory);
+    console.log(this.currentCategory);
+    console.log(this.menu[this.currentCategory]);
+    render();
+  }
+  }
 
 //이벤트 바인딩
 
@@ -233,14 +267,7 @@ function App() {
 
     //내비게이션
     $("nav").addEventListener("click", (e) => {
-      const isCategoryButton =
-        e.target.classList.contains("cafe-category-name");
-      if (isCategoryButton) {
-        const categoryName = e.target.dataset.categoryName;
-        this.currentCategory = categoryName;
-        $("#category-title").innerText = `${e.target.innerText} 메뉴 관리`;
-        render(e);
-      }
+      navRender(e);
     });
   };
 
